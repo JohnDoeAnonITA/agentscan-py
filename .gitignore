@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+*.egg
+
+# virtualenvs
+.venv/
+venv/
+env/
+
+# tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# AgentScan local output & secrets
+agentscan-dump/
+reports/
+.pypirc
+.git-credentials
+*.token

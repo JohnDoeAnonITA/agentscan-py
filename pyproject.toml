@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentscan-py"
+version = "1.0.0"
+description = "Read-only scanner for exposed AI/agent services: detects unauthenticated endpoints on standard ports and enumerates their API surface."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = [
+    "security", "pentest", "reconnaissance", "scanner",
+    "ai", "llm", "agent", "ollama", "vllm", "mcp", "langserve",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+]
+# No runtime dependencies — standard library only.
+dependencies = []
+
+authors = [{ name = "JohnDoeAnon" }]
+
+# Fill the repository/homepage URL in before publishing (optional).
+# [project.urls]
+# Homepage = "https://github.com/<you>/agentscan"
+# Repository = "https://github.com/<you>/agentscan"
+
+[project.scripts]
+agentscan = "agentscan.cli:main"
+
+[project.optional-dependencies]
+dev = ["build>=1.0", "twine>=4.0"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

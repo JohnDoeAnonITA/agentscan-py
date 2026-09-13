@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include requirements.txt
+include targets.example.txt
+recursive-include src/agentscan *.py
+global-exclude __pycache__ *.py[cod] *.egg-info

@@ -1,0 +1,18 @@
+# AgentScan — requirements
+#
+# Runtime: NONE. AgentScan is pure standard library (Python >= 3.8).
+# `pip install -r requirements.txt` is safe and installs nothing required.
+#
+# Standard-library modules used:
+#   argparse, concurrent.futures, http.client, ipaddress, json, os, socket,
+#   ssl, sys, threading, time, datetime
+#
+# To install the package itself:
+#   pip install .
+#
+# To build distributable artifacts:
+#   pip install -r requirements-dev.txt   # then: python -m build
+
+# --- optional build tooling (not needed to run) ---
+# build>=1.0
+# twine>=4.0

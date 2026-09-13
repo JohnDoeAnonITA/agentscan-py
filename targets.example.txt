@@ -1,0 +1,13 @@
+# AgentScan target list — one target per line
+# Only list assets you OWN or are explicitly authorized to test.
+#
+# Supported forms:
+#   127.0.0.1
+#   my-agent.internal.example.com
+#   10.10.20.0/24
+#   10.10.20.1-10.10.20.50
+#
+# Example (uncomment / replace with your authorized assets):
+# 127.0.0.1
+# 10.0.0.0/24
+# gpu-box.lab.internal

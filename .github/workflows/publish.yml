@@ -2,8 +2,16 @@ name: Publish
 
 on:
   release:
-    types: [published]      # publishing a GitHub Release triggers PyPI
-  workflow_dispatch: {}      # manual run -> publishes to TestPyPI
+    types: [published]      # publishing a GitHub Release -> PyPI
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Where to publish"
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
 
 permissions:
   contents: read
@@ -32,7 +40,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: build
-    if: github.event_name == 'release'
+    if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi') }}
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -48,9 +56,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-testpypi:
-    name: Publish to TestPyPI (manual)
+    name: Publish to TestPyPI
     needs: build
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi' }}
     runs-on: ubuntu-latest
     environment:
       name: testpypi

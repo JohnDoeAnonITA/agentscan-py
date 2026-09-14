@@ -27,10 +27,10 @@ dependencies = []
 
 authors = [{ name = "JohnDoeAnon" }]
 
-# Fill the repository/homepage URL in before publishing (optional).
-# [project.urls]
-# Homepage = "https://github.com/<you>/agentscan"
-# Repository = "https://github.com/<you>/agentscan"
+[project.urls]
+Homepage = "https://github.com/JohnDoeAnonITA/agentscan-py"
+Repository = "https://github.com/JohnDoeAnonITA/agentscan-py"
+Issues = "https://github.com/JohnDoeAnonITA/agentscan-py/issues"
 
 [project.scripts]
 agentscan = "agentscan.cli:main"

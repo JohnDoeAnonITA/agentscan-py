@@ -53,7 +53,8 @@ pip install agentscan-py
 Or from source:
 
 ```bash
-git clone <repo> && cd agentscan
+git clone https://github.com/JohnDoeAnonITA/agentscan-py.git
+cd agentscan-py
 pip install .
 ```
 

@@ -27,6 +27,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      - name: Sync version from tag
+        if: github.event_name == 'release'
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          python - "$VER" <<'PY'
+          import re, sys, pathlib
+          ver = sys.argv[1]
+          p = pathlib.Path("pyproject.toml")
+          s = p.read_text(encoding="utf-8")
+          new, n = re.subn(r'(?m)^version\s*=\s*"[^"]*"',
+                           'version = "%s"' % ver, s, count=1)
+          if n != 1:
+              sys.exit("version line not found in pyproject.toml")
+          p.write_text(new, encoding="utf-8")
+          print("pyproject version ->", ver)
+          PY
       - name: Build sdist + wheel
         run: |
           python -m pip install --upgrade pip build twine

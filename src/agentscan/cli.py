@@ -44,7 +44,7 @@ from datetime import datetime
 from . import signatures as SIG
 
 # --------------------------------------------------------------------------
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 BANNER = r"""
  █████╗  ██████╗ ███████╗███╗   ██╗████████╗███████╗ ██████╗  █████╗ ███╗   ██╗
@@ -58,7 +58,11 @@ BANNER = r"""
 
 MISSING = object()
 MAX_BODY = 262144          # 256 KiB cap per response
-UA = "Mozilla/5.0 (compatible; AgentScope/1.0; +authorized-security-audit)"
+# Neutral browser User-Agent: many WAFs / appliances drop or 403 requests that
+# carry a non-browser UA (python-requests, urllib, custom bot strings).
+DEFAULT_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+UA = DEFAULT_UA
 
 
 # ----------------------------- helpers ------------------------------------
@@ -414,7 +418,8 @@ def _one_request(host, port, path, scheme, timeout, method, body, headers_extra)
     else:
         conn = http.client.HTTPConnection(host, port, timeout=timeout)
 
-    headers = {"User-Agent": UA, "Accept": "*/*", "Connection": "close"}
+    headers = {"User-Agent": UA, "Accept": "*/*",
+               "Accept-Language": "en-US,en;q=0.9", "Connection": "close"}
     if headers_extra:
         headers.update(headers_extra)
     try:
@@ -429,22 +434,54 @@ def _one_request(host, port, path, scheme, timeout, method, body, headers_extra)
             pass
 
 
+# Per-port timeout bookkeeping: (host, port) -> number of full-request timeouts.
+# Used to (a) fall through to the next scheme on a timeout and (b) stop burning
+# the full timeout on a port that never answers HTTP at all.
+PORT_TIMEOUTS = {}
+PORT_LOCK = threading.Lock()
+DEAD_AFTER = 3          # timeouts on a port -> treat as "speaks no HTTP"
+
+
+def _port_timeouts(hp):
+    with PORT_LOCK:
+        return PORT_TIMEOUTS.get(hp, 0)
+
+
+def _mark_timeout(hp):
+    with PORT_LOCK:
+        PORT_TIMEOUTS[hp] = PORT_TIMEOUTS.get(hp, 0) + 1
+
+
 def fetch(host, port, path, schemes, timeout, method="GET", body=None,
           headers_extra=None):
-    """Try each scheme in order; return (scheme, status, headers, body) or None."""
+    """Try each scheme in order; return (scheme, status, headers, body) or None.
+
+    A plain-HTTP request to a TLS-only port surfaces (per the real stdlib) as
+    ConnectionResetError / BadStatusLine / RemoteDisconnected (or ssl.SSLError
+    the other way round) -> we fall through to the next scheme, i.e. automatic
+    HTTPS fallback.  A timeout also falls through to the next scheme, and after
+    DEAD_AFTER timeouts the port is short-circuited so we stop paying the
+    timeout on every subsequent probe.
+    """
+    hp = (host, port)
+    if _port_timeouts(hp) >= DEAD_AFTER:
+        return None
     for scheme in schemes:
+        eff = min(timeout, 2.0) if _port_timeouts(hp) else timeout
         try:
             status, headers, text = _one_request(
-                host, port, path, scheme, timeout, method, body, headers_extra
+                host, port, path, scheme, eff, method, body, headers_extra
             )
         except ssl.SSLError:
             continue
         except (http.client.BadStatusLine, http.client.RemoteDisconnected,
-                ConnectionResetError, ConnectionRefusedError, BrokenPipeError):
+                ConnectionResetError, ConnectionRefusedError, BrokenPipeError,
+                ConnectionAbortedError):
             # plain HTTP against a TLS port (or vice-versa) -> try next scheme
             continue
         except (socket.timeout, TimeoutError):
-            return None
+            _mark_timeout(hp)
+            continue
         except Exception:
             continue
 
@@ -711,7 +748,12 @@ def probe_target(host, port, schemes, timeout, limiter, aggressive, verify=True)
                       "  [service detected but authentication is enforced]").strip(),
         }
 
-    return finding  # TCP open but no HTTP response
+    # TCP open but no HTTP payload at all -> a "silent" host (ISP router, strict
+    # firewall, port that only completes the SYN). Classified and, by default,
+    # excluded from the results so it does not flood the output.
+    finding["service"] = "silent-host (TCP open, no HTTP response)"
+    finding["silent"] = True
+    return finding
 
 
 # ----------------------------- targets ------------------------------------
@@ -810,7 +852,7 @@ SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4, "unknow
 
 
 def render_console(findings, started, elapsed, ok_targets, list_endpoints=True,
-                   only_2xx=False):
+                   only_2xx=False, silent_count=0):
     C = {"critical": "\033[1;31m", "high": "\033[31m", "medium": "\033[33m",
          "low": "\033[36m", "info": "\033[90m", "reset": "\033[0m",
          "b": "\033[1m", "g": "\033[32m"}
@@ -827,6 +869,9 @@ def render_console(findings, started, elapsed, ok_targets, list_endpoints=True,
     print("Targets scanned : {}".format(started))
     print("Open/identified : {}".format(len(findings_sorted)))
     print("NO-AUTH exposed : {}  <-- action required".format(len(unauth)))
+    if silent_count:
+        print("Silent ports    : {} (TCP open, no HTTP payload — hidden, "
+              "use --show-silent)".format(silent_count))
     print("-" * 78)
     for f in findings_sorted:
         col = C.get(f["severity"], "")
@@ -1108,6 +1153,8 @@ def main():
                     version="AgentScan {}".format(VERSION))
     ap.add_argument("--no-banner", dest="banner", action="store_false",
                     help="do not print the startup banner")
+    ap.add_argument("--user-agent", dest="user_agent",
+                    help="custom User-Agent (default: a neutral desktop-browser UA)")
     ap.add_argument("-t", "--target", action="append",
                     help="target host/IP/CIDR/range (repeatable, comma-separated)")
     ap.add_argument("--targets", help="file with one target per line")
@@ -1136,6 +1183,9 @@ def main():
     ap.add_argument("--all-status", dest="all_status", action="store_true",
                     help="show ALL endpoint statuses (incl. 401/403/405). "
                          "Default: only 2xx endpoints are displayed")
+    ap.add_argument("--show-silent", dest="show_silent", action="store_true",
+                    help="also list 'silent' hosts (TCP open but no HTTP response); "
+                         "hidden by default")
     ap.add_argument("--sweep", default="aggressive",
                     choices=["off", "normal", "aggressive"],
                     help="brute-force common API sub-paths for detected services "
@@ -1158,6 +1208,9 @@ def main():
     ap.add_argument("--authorized", action="store_true",
                     help="REQUIRED: confirm you are authorized to test these assets")
     args = ap.parse_args()
+
+    global UA
+    UA = args.user_agent or DEFAULT_UA
 
     if args.banner:
         print(BANNER)
@@ -1264,8 +1317,12 @@ def main():
                     done, len(tasks), open_ports))
 
     elapsed = time.monotonic() - began
+    silent = [f for f in findings if f.get("silent")]
+    if silent and not args.show_silent:
+        findings = [f for f in findings if not f.get("silent")]
     render_console(findings, len(hosts), elapsed, open_ports,
-                   list_endpoints=args.list_endpoints, only_2xx=args.only_2xx)
+                   list_endpoints=args.list_endpoints, only_2xx=args.only_2xx,
+                   silent_count=(0 if args.show_silent else len(silent)))
 
     # outputs
     out_json = args.json_out
